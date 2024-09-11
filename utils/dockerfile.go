@@ -1,17 +1,13 @@
 package utils
 
 import (
-	"archive/tar"
 	"bytes"
-	"context"
 	"fmt"
-	"github.com/docker/docker/api/types"
-	containertypes "github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
 	"gopkg.in/yaml.v3"
-	"io"
 	"io/ioutil"
 	"os"
+	"os/exec"
+	"strings"
 )
 
 type config struct {
@@ -99,80 +95,61 @@ func YamlToDockerfile(yamlFile string) (string, error) {
 }
 
 func BuildDockerImage(imageName string, dockerfileContent string) error {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	// Write Dockerfile content to a temporary file
+	tmpfile, err := ioutil.TempFile("", "Dockerfile")
 	if err != nil {
-		return fmt.Errorf("failed to create Docker client: %w", err)
+		return fmt.Errorf("failed to create temporary Dockerfile: %w", err)
 	}
-	defer cli.Close()
+	defer os.Remove(tmpfile.Name())
 
-	buildContext, err := createBuildContext(dockerfileContent)
-	if err != nil {
-		return fmt.Errorf("failed to create build context: %w", err)
+	if _, err := tmpfile.Write([]byte(dockerfileContent)); err != nil {
+		return fmt.Errorf("failed to write to temporary Dockerfile: %w", err)
 	}
-
-	buildOptions := types.ImageBuildOptions{
-		Tags:       []string{imageName},
-		Dockerfile: "Dockerfile",
-		Remove:     true,
+	if err := tmpfile.Close(); err != nil {
+		return fmt.Errorf("failed to close temporary Dockerfile: %w", err)
 	}
 
-	buildResponse, err := cli.ImageBuild(context.Background(), buildContext, buildOptions)
-	if err != nil {
-		return fmt.Errorf("failed to build image: %w", err)
-	}
-	defer buildResponse.Body.Close()
+	// Build the Docker image
+	cmd := exec.Command("docker", "build", "-t", imageName, "-f", tmpfile.Name(), ".")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &out
 
-	_, err = io.Copy(os.Stdout, buildResponse.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read build response: %w", err)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to build image: %w\nOutput: %s", err, out.String())
 	}
 
+	fmt.Println(out.String())
 	return nil
 }
 
-func createBuildContext(dockerfileContent string) (io.Reader, error) {
-	buf := new(bytes.Buffer)
-	tw := tar.NewWriter(buf)
-	defer tw.Close()
-
-	dockerfileHeader := &tar.Header{
-		Name: "Dockerfile",
-		Size: int64(len(dockerfileContent)),
-		Mode: 0600,
-	}
-
-	if err := tw.WriteHeader(dockerfileHeader); err != nil {
-		return nil, fmt.Errorf("failed to write Dockerfile header: %w", err)
-	}
-
-	if _, err := tw.Write([]byte(dockerfileContent)); err != nil {
-		return nil, fmt.Errorf("failed to write Dockerfile content: %w", err)
-	}
-
-	return buf, nil
-}
-
 func RemoveOldDockerImages(imageName string) error {
-	ctx := context.Background()
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
-	if err != nil {
-		return fmt.Errorf("failed to create Docker client: %w", err)
-	}
-	defer cli.Close()
+	// List containers using the image
+	cmd := exec.Command("docker", "ps", "-a", "--filter", fmt.Sprintf("ancestor=%s", imageName), "--format", "{{.ID}}")
+	var out bytes.Buffer
+	cmd.Stdout = &out
 
-	containers, err := cli.ContainerList(ctx, containertypes.ListOptions{})
-	if err != nil {
-		panic(err)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to list containers: %w", err)
 	}
 
-	for _, container := range containers {
-		if container.Image == imageName {
-			err = cli.ContainerRemove(ctx, container.ID, containertypes.RemoveOptions{true,
-				true, true})
-			if err != nil {
-				panic(err)
-			}
+	// Remove containers
+	containerIDs := strings.Fields(out.String())
+	for _, id := range containerIDs {
+		removeCmd := exec.Command("docker", "rm", "-f", id)
+		if err := removeCmd.Run(); err != nil {
+			return fmt.Errorf("failed to remove container %s: %w", id, err)
 		}
 	}
-	return err
+
+	// Remove the image
+	removeImageCmd := exec.Command("docker", "rmi", "-f", imageName)
+	if err := removeImageCmd.Run(); err != nil {
+		// Ignore errors if the image doesn't exist
+		if exitError, ok := err.(*exec.ExitError); !ok || exitError.ExitCode() != 1 {
+			return fmt.Errorf("failed to remove image %s: %w", imageName, err)
+		}
+	}
+
+	return nil
 }
