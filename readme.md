@@ -99,3 +99,6 @@ We'd like to thank all contributors and users of SimpleArity. Your support and f
 ---
 
 Developed with 🐭 by [Kemalcan Bora](https://github.com/kemalcanbora)
+
+
+

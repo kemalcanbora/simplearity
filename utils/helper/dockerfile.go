@@ -1,11 +1,10 @@
-package utils
+package helper
 
 import (
 	"bytes"
 	"fmt"
 	"gopkg.in/yaml.v3"
 	"io/ioutil"
-	"os"
 	"os/exec"
 	"strings"
 )
@@ -94,23 +93,11 @@ func YamlToDockerfile(yamlFile string) (string, error) {
 	return dockerfile, nil
 }
 
-func BuildDockerImage(imageName string, dockerfileContent string) error {
-	// Write Dockerfile content to a temporary file
-	tmpfile, err := ioutil.TempFile("", "Dockerfile")
-	if err != nil {
-		return fmt.Errorf("failed to create temporary Dockerfile: %w", err)
-	}
-	defer os.Remove(tmpfile.Name())
-
-	if _, err := tmpfile.Write([]byte(dockerfileContent)); err != nil {
-		return fmt.Errorf("failed to write to temporary Dockerfile: %w", err)
-	}
-	if err := tmpfile.Close(); err != nil {
-		return fmt.Errorf("failed to close temporary Dockerfile: %w", err)
-	}
-
+func BuildAndPushDockerImage(imageName, dockerHubUsername string) error {
 	// Build the Docker image
-	cmd := exec.Command("docker", "build", "-t", imageName, "-f", tmpfile.Name(), ".")
+	fmt.Println("Building Docker image...")
+	fmt.Println("imageName:", imageName)
+	cmd := exec.Command("docker", "build", "-t", imageName, ".")
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
@@ -119,7 +106,34 @@ func BuildDockerImage(imageName string, dockerfileContent string) error {
 		return fmt.Errorf("failed to build image: %w\nOutput: %s", err, out.String())
 	}
 
+	fmt.Println("Build output:")
 	fmt.Println(out.String())
+
+	fullImageName := fmt.Sprintf("%s/%s:latest", dockerHubUsername, imageName)
+	fmt.Printf("Tagging image as %s...\n", fullImageName)
+	tagCmd := exec.Command("docker", "tag", imageName, fullImageName)
+	tagOut := &bytes.Buffer{}
+	tagCmd.Stdout = tagOut
+	tagCmd.Stderr = tagOut
+	if err := tagCmd.Run(); err != nil {
+		return fmt.Errorf("failed to tag image: %w\nOutput: %s", err, tagOut.String())
+	}
+
+	// Push to Docker Hub
+	fmt.Printf("Pushing image to Docker Hub as %s...\n", fullImageName)
+	pushCmd := exec.Command("docker", "push", fullImageName)
+	pushOut := &bytes.Buffer{}
+	pushCmd.Stdout = pushOut
+	pushCmd.Stderr = pushOut
+
+	if err := pushCmd.Run(); err != nil {
+		return fmt.Errorf("failed to push image to Docker Hub: %w\nOutput: %s", err, pushOut.String())
+	}
+
+	fmt.Println("Push output:")
+	fmt.Println(pushOut.String())
+
+	fmt.Println("Successfully pushed image to Docker Hub")
 	return nil
 }
 

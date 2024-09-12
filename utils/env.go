@@ -8,17 +8,19 @@ import (
 )
 
 type EnvSettings struct {
-	AppDir       string
-	IgnoreFile   string
-	YamlFile     string
-	Dockerfile   string
-	AppImageName string
-	MaxAppImages int
-	Singularity  bool
-	JobName      string
-	CpusPerTask  int
-	Mem          string
-	Partition    string
+	AppDir            string
+	IgnoreFile        string
+	YamlFile          string
+	Dockerfile        string
+	ImageName         string
+	MaxAppImages      int
+	Singularity       bool
+	JobName           string
+	CpusPerTask       int
+	Mem               string
+	Partition         string
+	HpcUsername       string
+	DockerHubUsername string
 }
 
 func LoadEnv(filePath string) error {
@@ -31,14 +33,16 @@ func LoadEnv(filePath string) error {
 
 func LoadConfig() (*EnvSettings, error) {
 	config := &EnvSettings{
-		AppDir:       os.Getenv("APP_DIR"),
-		IgnoreFile:   os.Getenv("IGNORE_FILE"),
-		YamlFile:     os.Getenv("YAML_FILE"),
-		Dockerfile:   os.Getenv("DOCKERFILE"),
-		AppImageName: os.Getenv("APP_IMAGE_NAME"),
-		JobName:      os.Getenv("JOB_NAME"),
-		Mem:          os.Getenv("MEM"),
-		Partition:    os.Getenv("PARTITION"),
+		AppDir:            os.Getenv("APP_DIR"),
+		IgnoreFile:        os.Getenv("IGNORE_FILE"),
+		YamlFile:          os.Getenv("YAML_FILE"),
+		Dockerfile:        os.Getenv("DOCKERFILE"),
+		ImageName:         os.Getenv("IMAGE_NAME"),
+		JobName:           os.Getenv("JOB_NAME"),
+		Mem:               os.Getenv("MEM"),
+		Partition:         os.Getenv("PARTITION"),
+		HpcUsername:       os.Getenv("HPC_USERNAME"),
+		DockerHubUsername: os.Getenv("DOCKER_HUB_USERNAME"),
 	}
 
 	maxAppImages, err := strconv.Atoi(os.Getenv("MAX_APP_IMAGES"))

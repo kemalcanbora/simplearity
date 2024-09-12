@@ -11,12 +11,7 @@ import (
 func main() {
 	var rootCmd = &cobra.Command{Use: "simplearity"}
 
-	// Add basic commands
 	rootCmd.AddCommand(cmd.InitCmd())
-	rootCmd.AddCommand(cmd.CreateCmd())
-	rootCmd.AddCommand(cmd.GpuCmd())
-	rootCmd.AddCommand(cmd.JobsCmd())
-
 	isInitialized := false
 	if _, err := os.Stat("simplearity.env"); err == nil {
 		isInitialized = true
@@ -34,9 +29,13 @@ func main() {
 			fmt.Println("Please run 'simplearity init' to reset the configuration.")
 			os.Exit(1)
 		}
-		// Add Docker-related commands
-		rootCmd.AddCommand(cmd.BuildCmd(config.AppImageName))
-		rootCmd.AddCommand(cmd.RunCmd(config.AppImageName, config.Singularity))
+		rootCmd.AddCommand(cmd.DeployCmd(config.HpcUsername,
+			config.DockerHubUsername,
+			config.ImageName,
+			config.JobName,
+			config.Mem,
+			config.Partition,
+			config.CpusPerTask))
 	}
 
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {

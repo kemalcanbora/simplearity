@@ -1,4 +1,4 @@
-package utils
+package helper
 
 import (
 	"fmt"
@@ -7,7 +7,7 @@ import (
 	"os"
 )
 
-func CreateFileFromGitHub(destination, url string) {
+func FetchFileFromGitHub(destination, url string) {
 	resp, err := http.Get(url)
 	if err != nil {
 		fmt.Printf("Error fetching file from GitHub: %v\n", err)
