@@ -46,15 +46,18 @@ debug "Fetching latest version from GitHub API..."
 GITHUB_API_RESPONSE=$(curl -sSL https://api.github.com/repos/kemalcanbora/simplearity/releases/latest)
 debug "Full GitHub API Response: $GITHUB_API_RESPONSE"
 
-# Extract version using jq
+# Extract version using jq if available, otherwise use grep
 if command -v jq >/dev/null 2>&1; then
     VERSION=$(echo "$GITHUB_API_RESPONSE" | jq -r .tag_name)
+    debug "Version extracted with jq: $VERSION"
 else
-    VERSION=$(echo "$GITHUB_API_RESPONSE" | grep -oP '"tag_name": "\K[^"]+')
+    VERSION=$(echo "$GITHUB_API_RESPONSE" | grep -oP '"tag_name":\s*"\K[^"]+')
+    debug "Version extracted with grep: $VERSION"
 fi
 
 if [[ -z "$VERSION" ]]; then
     error "Failed to determine latest version. Please check if releases exist on GitHub."
+    debug "API Response: $GITHUB_API_RESPONSE"
     exit 1
 fi
 
@@ -66,10 +69,20 @@ debug "Download URL: $DOWNLOAD_URL"
 
 # Download the tarball
 TARBALL="simplearity_${OS}_${ARCH}.tar.gz"
-curl -sSL "$DOWNLOAD_URL" -o "$TARBALL"
+if curl -sSLf -o "$TARBALL" "$DOWNLOAD_URL"; then
+    success "Successfully downloaded $TARBALL"
+else
+    error "Failed to download $TARBALL"
+    exit 1
+fi
 
 # Extract the tarball
-tar -xzf "$TARBALL"
+if tar -xzf "$TARBALL"; then
+    success "Successfully extracted $TARBALL"
+else
+    error "Failed to extract $TARBALL"
+    exit 1
+fi
 
 # Get the full path of the current directory
 INSTALL_DIR=$(pwd)
