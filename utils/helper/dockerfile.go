@@ -97,7 +97,7 @@ func BuildAndPushDockerImage(imageName, dockerHubUsername string) error {
 	// Build the Docker image
 	fmt.Println("Building Docker image...")
 	fmt.Println("imageName:", imageName)
-	cmd := exec.Command("docker", "build", "-t", imageName, ".")
+	cmd := exec.Command("docker", "buildx", "build", "--platform=linux/amd64", "--load", "-t", imageName, ".")
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
