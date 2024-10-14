@@ -24,7 +24,7 @@ Choose the installation method that best suits your system and preferences:
 For a quick and easy installation without Homebrew, use our install script:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/kemalcanbora/simplearity/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/kemalcanbora/simplearity/refs/heads/main/released/install.sh | bash
 ```
 
 This script will download the appropriate version for your system and set up SimpleArity in your home directory.

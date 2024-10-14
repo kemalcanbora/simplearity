@@ -2,134 +2,97 @@
 
 set -e
 
-# SimpleArity Full Diagnostic Installation Script
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
 
-# Function to print error messages
-error() {
-    echo "Error: $1" >&2
-    exit 1
-}
-
-# Function to print debug messages
+# Function to log debug messages
 debug() {
-    echo "Debug: $1" >&2
+    echo "Debug: $1"
 }
 
-# Determine latest version
-debug "Fetching latest version from GitHub API..."
-GITHUB_API_RESPONSE=$(curl -sSi https://api.github.com/repos/kemalcanbora/simplearity/releases/latest)
-debug "Full GitHub API Response Headers:"
-echo "$GITHUB_API_RESPONSE" | sed 's/^/    /' >&2
+# Function to log errors
+error() {
+    echo -e "${RED}Error: $1${NC}" >&2
+}
 
-GITHUB_API_BODY=$(echo "$GITHUB_API_RESPONSE" | sed -n '/^\r?$/,$p' | sed '1d')
-debug "GitHub API Response Body:"
-echo "$GITHUB_API_BODY" | sed 's/^/    /' >&2
+# Function to log success messages
+success() {
+    echo -e "${GREEN}$1${NC}"
+}
 
-LATEST_VERSION=$(echo "$GITHUB_API_BODY" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-debug "Latest version: $LATEST_VERSION"
+# Function to log warnings
+warn() {
+    echo -e "${YELLOW}Warning: $1${NC}"
+}
 
-if [ -z "$LATEST_VERSION" ]; then
-    error "Failed to determine latest version. Please check if releases exist on GitHub."
+# Detect OS and architecture
+OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+ARCH=$(uname -m)
+
+if [[ "$ARCH" == "x86_64" ]]; then
+    ARCH="amd64"
+elif [[ "$ARCH" == "aarch64" || "$ARCH" == "arm64" ]]; then
+    ARCH="arm64"
+else
+    error "Unsupported architecture: $ARCH"
+    exit 1
 fi
 
-# Determine system architecture and OS
-OS=$(uname -s)
-ARCH=$(uname -m)
-case $OS in
-    Linux)
-        OS="Linux"
-        ;;
-    Darwin)
-        OS="Darwin"
-        ;;
-    *)
-        error "Unsupported operating system: $OS"
-        ;;
-esac
-case $ARCH in
-    x86_64)
-        ARCH="x86_64"
-        ;;
-    aarch64|arm64)
-        ARCH="arm64"
-        ;;
-    *)
-        error "Unsupported architecture: $ARCH"
-        ;;
-esac
-debug "Detected OS: $OS, Architecture: $ARCH"
+# Fetch latest version from GitHub API
+debug "Fetching latest version from GitHub API..."
+GITHUB_API_RESPONSE=$(curl -sSL https://api.github.com/repos/kemalcanbora/simplearity/releases/latest)
+debug "Full GitHub API Response: $GITHUB_API_RESPONSE"
+
+# Extract version using jq
+if command -v jq >/dev/null 2>&1; then
+    VERSION=$(echo "$GITHUB_API_RESPONSE" | jq -r .tag_name)
+else
+    VERSION=$(echo "$GITHUB_API_RESPONSE" | grep -oP '"tag_name": "\K[^"]+')
+fi
+
+if [[ -z "$VERSION" ]]; then
+    error "Failed to determine latest version. Please check if releases exist on GitHub."
+    exit 1
+fi
+
+debug "Latest version: $VERSION"
 
 # Construct download URL
-DOWNLOAD_URL="https://github.com/kemalcanbora/simplearity/releases/download/${LATEST_VERSION}/simplearity_${OS}_${ARCH}.tar.gz"
+DOWNLOAD_URL="https://github.com/kemalcanbora/simplearity/releases/download/${VERSION}/simplearity_${OS}_${ARCH}.tar.gz"
 debug "Download URL: $DOWNLOAD_URL"
 
-# Create a directory for SimpleArity in the user's home
-INSTALL_DIR="$HOME/.simplearity"
-mkdir -p "$INSTALL_DIR"
-debug "Installation directory: $INSTALL_DIR"
+# Download the tarball
+TARBALL="simplearity_${OS}_${ARCH}.tar.gz"
+curl -sSL "$DOWNLOAD_URL" -o "$TARBALL"
 
-# Download SimpleArity
-echo "Downloading SimpleArity ${LATEST_VERSION} for ${OS} ${ARCH}..."
-CURL_RESPONSE=$(curl -sSL -w "%{http_code}" -o "$INSTALL_DIR/simplearity.tar.gz" $DOWNLOAD_URL)
-HTTP_STATUS=${CURL_RESPONSE: -3}
-debug "HTTP Status Code: $HTTP_STATUS"
+# Extract the tarball
+tar -xzf "$TARBALL"
 
-if [ $HTTP_STATUS -ne 200 ]; then
-    error "Failed to download SimpleArity. HTTP Status: $HTTP_STATUS"
+# Get the full path of the current directory
+INSTALL_DIR=$(pwd)
+
+# Update PATH in .zshrc
+if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
+    echo "export PATH=\"$INSTALL_DIR:\$PATH\"" >> ~/.zshrc
+    export PATH="$INSTALL_DIR:$PATH"
+    success "Updated PATH in ~/.zshrc and current session."
+    echo "You can now run 'simplearity' from any directory."
+    echo "Please restart your terminal or run 'source ~/.zshrc' to apply changes in new terminal windows."
+else
+    warn "The installation directory is already in your PATH."
 fi
-
-# Check file type
-FILE_TYPE=$(file -b "$INSTALL_DIR/simplearity.tar.gz")
-debug "Downloaded file type: $FILE_TYPE"
-
-# Check file size
-FILE_SIZE=$(du -h "$INSTALL_DIR/simplearity.tar.gz" | cut -f1)
-debug "Downloaded file size: $FILE_SIZE"
-
-# Print contents if file is small
-if [ "$(wc -c < "$INSTALL_DIR/simplearity.tar.gz")" -lt 1000 ]; then
-    debug "Contents of downloaded file:"
-    cat "$INSTALL_DIR/simplearity.tar.gz" | sed 's/^/    /' >&2
-fi
-
-# Extract the binary
-echo "Extracting SimpleArity..."
-if ! tar -xzf "$INSTALL_DIR/simplearity.tar.gz" -C "$INSTALL_DIR"; then
-    error "Failed to extract SimpleArity"
-fi
-
-# Check if the binary was extracted successfully
-if [ ! -f "$INSTALL_DIR/simplearity" ]; then
-    error "SimpleArity binary not found in the extracted archive"
-fi
-
-# Make the binary executable
-chmod +x "$INSTALL_DIR/simplearity"
 
 # Clean up
-rm "$INSTALL_DIR/simplearity.tar.gz"
+rm "$TARBALL"
 
-echo "SimpleArity ${LATEST_VERSION} has been installed to $INSTALL_DIR/simplearity"
-
-# Add the installation directory to PATH in shell configuration file
-SHELL_CONFIG="$HOME/.bashrc"
-if [[ $SHELL == *"zsh"* ]]; then
-    SHELL_CONFIG="$HOME/.zshrc"
-fi
-
-if ! grep -q "$INSTALL_DIR" "$SHELL_CONFIG"; then
-    echo "export PATH=\"\$PATH:$INSTALL_DIR\"" >> "$SHELL_CONFIG"
-    echo "Added $INSTALL_DIR to your PATH in $SHELL_CONFIG"
-    echo "Please restart your terminal or run 'source $SHELL_CONFIG' to update your PATH"
+# Verify simplearity is accessible
+if command -v simplearity &> /dev/null; then
+    success "Simplearity $VERSION has been installed and is accessible from anywhere."
 else
-    echo "$INSTALL_DIR is already in your PATH"
+    error "Error: simplearity is not accessible. Please check the file permissions and try again."
 fi
 
-echo "You can now use SimpleArity by running 'simplearity' in your terminal after updating your PATH"
-
-# Verify installation
-if "$INSTALL_DIR/simplearity" --version >/dev/null 2>&1; then
-    echo "Installation verified. SimpleArity is ready to use."
-else
-    error "Installation seems to have failed. Unable to run SimpleArity."
-fi
+echo "Installation complete. You may need to restart your terminal or run 'source ~/.zshrc' to use the 'simplearity' command in this session."
